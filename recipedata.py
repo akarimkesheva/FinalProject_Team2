@@ -1,6 +1,6 @@
 #This class is responsible for all the Recipes in the Microwave
 #Organized by categories
-class recipedata:
+class RecipeData:
     def __init__(self):
     
         self.menu = {
