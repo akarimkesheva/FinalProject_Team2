@@ -10,23 +10,6 @@
    Light Gray = D3D3D3
    White = FFFFFF
    Red = B22222
-
-=================================
-
-   *Note to self, remove this comment from header after finishing*:
-    -Fix the scaling when making program fullscreen
-    -Update to layout to make it look more like a microwave
-    -Change the buttons to look more like microwave buttons (maybe with an image?)
-    -Change the program title once we all decide on the program name.
-    -Connect this program with SystemLogic class (or whatever we name it)
-     whenever the class gets finished.
-    
-    -Maybe turn the hexacdecimal colors into variables, might be easier to read?
-    -Finish adding comments to some of the lines, or change if it feels too vague.
-    -After partner updates the recipedata, make sure that the program won't have to open
-     up by pressing input in the terminal
-    -Add a manual time mode
-
 ================================
 
 Revisions by: Noah Beach
@@ -48,8 +31,7 @@ from SystemLogic import SystemLogic
 class RemoteInterface:
     def __init__(self, root):
         self.root = root
-        #We need to figure out a name for out program, and i'll change it here
-        self.root.title("Microwave Program")
+        self.root.title("Smart Microwave")
         self.root.configure(bg="#2C2C2C")
         self.data = RecipeData()
         self.logic = SystemLogic(self.data)
@@ -227,6 +209,7 @@ class RemoteInterface:
             min, sec = divmod(cook_time,60)
             self.display.config(text=f"{min:02}:{sec:02}")
             info_text = f"MANUAL COOKING\nPower: {power}"
+            self.update_countdown(cook_time)
 
         info_label = Label(self.menu_frame, text=info_text, bg="#2C2C2C", fg="#D3D3D3",
               font=("Arial", 12))
@@ -239,6 +222,18 @@ class RemoteInterface:
         
         cancel_canvas.tag_bind(ring, "<Button-1>", lambda e: self.load_main_menu())
         cancel_canvas.tag_bind(txt, "<Button-1>", lambda e: self.load_main_menu())
+    
+    def update_countdown(self, seconds_left):
+        if not self.logic.is_running or seconds_left < 0:
+            if seconds_left <= 0 and self.logic.is_running:
+                self.display.config(text="DONE!")
+                self.logic.is_running = False
+            return
+        
+        min, sec = divmod(seconds_left, 60)
+        self.display.config(text=f"{min:02}:{sec:02}")
+
+        self.root.after(1000, lambda: self.update_countdown(seconds_left -1))
 
     def start_cooking(self, category, item_id):
         self.clear_buttons()
@@ -262,6 +257,8 @@ class RemoteInterface:
             min, sec = divmod(food_dict['time'],60)
             self.display.config(text=f"{min:02}:{sec:02}")
             info_text = f"COOKING: {food_dict['name']}\nPower: {food_dict['power']}"
+
+            self.update_countdown(food_dict['time'])
 
         info_label = Label(self.menu_frame, text=info_text, bg="#2C2C2C", fg="#D3D3D3",
               font=("Arial", 12))
