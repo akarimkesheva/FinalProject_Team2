@@ -23,6 +23,17 @@ Revisions:
 - Added manual cooking mode with time and power input
 - Updated cooking behavior to check for safety conditions before starting
 
+===============================
+Revisions by: Jalen Gillespie
+Revision Date: 03/08/2026
+
+Revisions:
+- Fixed timer ghosting when inputting two manual timers
+- Added "show_cancel_only function for the cancel button"
+- The timer now counts down.
+- Fixed a bug where 2 cancel buttons would show up after manual mode
+- GUI is now synchronized when the door is open.
+
 """
 from tkinter import *
 from recipedata import RecipeData
@@ -35,6 +46,7 @@ class RemoteInterface:
         self.root.configure(bg="#2C2C2C")
         self.data = RecipeData()
         self.logic = SystemLogic(self.data)
+        self.timer_id = None
 
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(1, weight=1)
@@ -76,41 +88,68 @@ class RemoteInterface:
 
     def load_main_menu(self):
         self.clear_buttons()
-        self.display.config(text="CHOOSE CATEGORY")
+
+        if self.logic.remaining_time > 0 and not self.logic.is_running:
+            min, sec = divmod(self.logic.remaining_time, 60)
+            self.display.config(text=f"PAUSED {min:02}:{sec:02}")
+
+            resume_btn = Button(self.menu_frame, text="RESUME", font=("Arial", 10, "bold"),
+                                fg="lime", bg="#4A4A4A", command=self.resume_cooking)
+            resume_btn.grid(row=0, column=0, columnspan=2, pady=10)
+        elif self.logic.is_running:
+            self.show_cancel_only()
+        else:         
+            self.display.config(text="CHOOSE CATEGORY")
 
         self.menu_frame.columnconfigure(0, weight=1)
         self.menu_frame.columnconfigure(1, weight=1)
 
-        categories = self.data.get_categories()
-        for i, cat in enumerate(categories):
-            self.create_ring_button(self.menu_frame, cat,
-                                    lambda c=cat: self.show_items(c),
-                                    i//2, i%2)
+        if not self.logic.is_running:
+            categories = self.data.get_categories()
+            for i, cat in enumerate(categories):
+                self.create_ring_button(self.menu_frame, cat,
+                                        lambda c=cat: self.show_items(c),
+                                        i//2 + 4, i%2)
         # These buttons were added so the user can use manual mode and test safety features
         manual_btn = Button(self.menu_frame, text="MANUAL MODE", font=("Arial", 10, "bold"), 
-                          fg="#D3D3D3", bg="#4A4A4A",
-                          relief="flat", command=self.show_manual_mode)
+                        fg="#D3D3D3", bg="#4A4A4A",
+                        relief="flat", command=self.show_manual_mode)
         manual_btn.grid(row=40, column=0, columnspan=2, pady=10)
 
         lock_on_btn = Button(self.menu_frame, text="LOCK ON", font=("Arial", 9, "bold"), 
-                          fg="#D3D3D3", bg="#4A4A4A",
-                          relief="flat", command=self.enable_child_lock)
+                        fg="#D3D3D3", bg="#4A4A4A",
+                        relief="flat", command=self.enable_child_lock)
         lock_on_btn.grid(row=50, column=0, pady=10)
 
         lock_off_btn = Button(self.menu_frame, text="LOCK OFF", font=("Arial", 9, "bold"), 
-                          fg="#D3D3D3", bg="#4A4A4A",
-                          relief="flat", command=self.disable_child_lock)
+                        fg="#D3D3D3", bg="#4A4A4A",
+                        relief="flat", command=self.disable_child_lock)
         lock_off_btn.grid(row=50, column=1, pady=10)
 
         open_door_btn = Button(self.menu_frame, text="OPEN DOOR", font=("Arial", 9, "bold"), 
-                          fg="#D3D3D3", bg="#4A4A4A",
-                          relief="flat", command=self.open_door)
+                        fg="#D3D3D3", bg="#4A4A4A",
+                        relief="flat", command=self.open_door)
         open_door_btn.grid(row=51, column=0, pady=10)
 
         close_door_btn = Button(self.menu_frame, text="CLOSE DOOR", font=("Arial", 9, "bold"), 
-                          fg="#D3D3D3", bg="#4A4A4A",
-                          relief="flat", command=self.close_door)
+                        fg="#D3D3D3", bg="#4A4A4A",
+                        relief="flat", command=self.close_door)
         close_door_btn.grid(row=51, column=1, pady=10)
+    def show_cancel_only(self):
+        cancel_canvas = Canvas(self.menu_frame, width=150, height=60, bg="#2C2C2C", highlightthickness=0)
+        cancel_canvas.grid(row=2, column=0, columnspan=2, pady=10)
+        ring = cancel_canvas.create_oval(10, 10, 140, 50, outline="#B22222", width=4)
+        txt = cancel_canvas.create_text(75, 30, text="CANCEL", fill="#B22222", font=("Arial", 10, "bold"))
+
+        def cancel_action():
+            self.logic.is_running = False
+            self.logic.remaining_time = 0
+            if self.timer_id: self.root.after_cancel(self.timer_id)
+            self.load_main_menu()
+        
+        cancel_canvas.tag_bind(ring, "<Button-1>", lambda e: cancel_action())
+        cancel_canvas.tag_bind(txt, "<Button-1>", lambda e: cancel_action())
+
     
     def show_items(self, category):
         self.clear_buttons()
@@ -138,7 +177,7 @@ class RemoteInterface:
 
     def open_door(self):
         message = self.logic.open_door()
-        self.display.config(text=message)
+        self.root.after(1, self.load_main_menu)
 
     def close_door(self):
         message = self.logic.close_door()
@@ -184,28 +223,22 @@ class RemoteInterface:
             error_label.grid(row=4, column=0, columnspan=2, pady=20)
             return
 
-        if cook_time <= 0:
-            self.display.config(text="TIME ERROR")
+        if cook_time <= 0 or not (1 <= power <= 10):
+            self.display.config(text="ERROR")
             error_label = Label(self.menu_frame, text="Time must be greater than 0.", bg="#2C2C2C", fg="#D3D3D3",
                   font=("Arial", 12))
             error_label.grid(row=4, column=0, columnspan=2, pady=20)
             return
 
-        if power < 1 or power > 10:
-            self.display.config(text="POWER ERROR")
-            error_label = Label(self.menu_frame, text="Power must be 1 to 10.", bg="#2C2C2C", fg="#D3D3D3",
-                  font=("Arial", 12))
-            error_label.grid(row=4, column=0, columnspan=2, pady=20)
-            return
-
-        self.clear_buttons()
 
         status = self.logic.start_microwave()
 
         if status != "STARTING":
+            self.load_main_menu()
             self.display.config(text="BLOCKED")
             info_text = status
         else:
+            self.load_main_menu()
             min, sec = divmod(cook_time,60)
             self.display.config(text=f"{min:02}:{sec:02}")
             info_text = f"MANUAL COOKING\nPower: {power}"
@@ -214,30 +247,36 @@ class RemoteInterface:
         info_label = Label(self.menu_frame, text=info_text, bg="#2C2C2C", fg="#D3D3D3",
               font=("Arial", 12))
         info_label.grid(row=0, column=0, pady=20)
-
-        cancel_canvas = Canvas(self.menu_frame, width=150, height=60, bg="#2C2C2C", highlightthickness=0)
-        cancel_canvas.grid(row=1, column=0, pady=10)
-        ring = cancel_canvas.create_oval(10, 10, 140, 50, outline="#B22222", width=4)
-        txt = cancel_canvas.create_text(75, 30, text="CANCEL", fill="#B22222", font=("Arial", 10, "bold"))
-        
-        cancel_canvas.tag_bind(ring, "<Button-1>", lambda e: self.load_main_menu())
-        cancel_canvas.tag_bind(txt, "<Button-1>", lambda e: self.load_main_menu())
     
     def update_countdown(self, seconds_left):
+        self.logic.remaining_time = seconds_left
+
+        if self.timer_id:
+            self.root.after_cancel(self.timer_id)
+            self.timer_id = None
+
         if not self.logic.is_running or seconds_left < 0:
             if seconds_left <= 0 and self.logic.is_running:
                 self.display.config(text="DONE!")
                 self.logic.is_running = False
+                self.logic.remaining_time = 0
             return
         
         min, sec = divmod(seconds_left, 60)
         self.display.config(text=f"{min:02}:{sec:02}")
 
-        self.root.after(1000, lambda: self.update_countdown(seconds_left -1))
+        self.timer_id = self.root.after(1000, lambda: self.update_countdown(seconds_left -1))
+
+    def resume_cooking(self):
+        status = self.logic.start_microwave()
+        if status == "STARTING":
+            self.load_main_menu()
+            self.update_countdown(self.logic.remaining_time)
+        else:
+            self.display.config(text=status)    
 
     def start_cooking(self, category, item_id):
         self.clear_buttons()
-
         food_dict = self.logic.get_preset(category, item_id)
 
         if not food_dict:
@@ -249,28 +288,21 @@ class RemoteInterface:
 
         status = self.logic.start_microwave()
 
-        #This line formates the time to look like a real microwave
+        #This line formats the time to look like a real microwave
         if status != "STARTING":
+            self.load_main_menu()
             self.display.config(text="BLOCKED")
             info_text = status
         else:
+            self.load_main_menu()
             min, sec = divmod(food_dict['time'],60)
             self.display.config(text=f"{min:02}:{sec:02}")
             info_text = f"COOKING: {food_dict['name']}\nPower: {food_dict['power']}"
-
             self.update_countdown(food_dict['time'])
 
         info_label = Label(self.menu_frame, text=info_text, bg="#2C2C2C", fg="#D3D3D3",
               font=("Arial", 12))
-        info_label.grid(row=0, column=0, pady=20)
-
-        cancel_canvas = Canvas(self.menu_frame, width=150, height=60, bg="#2C2C2C", highlightthickness=0)
-        cancel_canvas.grid(row=1, column=0, pady=10)
-        ring = cancel_canvas.create_oval(10, 10, 140, 50, outline="#B22222", width=4)
-        txt = cancel_canvas.create_text(75, 30, text="CANCEL", fill="#B22222", font=("Arial", 10, "bold"))
-        
-        cancel_canvas.tag_bind(ring, "<Button-1>", lambda e: self.load_main_menu())
-        cancel_canvas.tag_bind(txt, "<Button-1>", lambda e: self.load_main_menu())
+        info_label.grid(row=2, column=0, columnspan=2, pady=10)
 
 root = Tk()
 my_gui = RemoteInterface(root)
