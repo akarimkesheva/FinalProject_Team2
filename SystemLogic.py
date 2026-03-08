@@ -7,6 +7,7 @@ class SystemLogic:
         self.is_door_closed = True  # True means closed, False means open
         self.child_lock = False     # True means locked, False means off
         self.is_running = False     # Tracks if the microwave is currently cooking
+        self.remaining_time = 0
 
     # Door commands
     def open_door(self):
