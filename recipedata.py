@@ -61,29 +61,35 @@ class RecipeData:
 #Retrieves the final execution parameters for a specific food item.
     def get_cooking_data(self, category, item_id):
         category_data = self.menu.get(category)
-        if category_data:
-            # Return None if the ID isn't there
-            return category_data.get(item_id, None)
-        return None
+        
+        if not category_data:
+            return f"The category '{category}' does not exist."
+        food_data = category_data.get(item_id)
+        
+        if not food_data:
+            return f"Food ID '{item_id}' not found in '{category}'."
+            
+        # 3. If everything is correct, return the dictionary
+        return food_data
 
 
 # This part simulates the user using the microwave interface
 
 if __name__ == "__main__":
-    
+
     manager = RecipeData()
 
     print("--- Welcome to the World's Best Microwave ---")
     print("1: Recipe Mode | 2: Manual Time Mode")
     mode = input("Select Mode: ")
 
-    if mode == "1": # Recipe mode
+    if mode == "1": #Recipe mode
         categories = manager.get_categories()
         for i, cat in enumerate(categories):
             print(f"{i}. {cat}")
 
-        # Simulate User picking a category
-        choice_index = 3 
+    # Simulate User picking a category (e.g., 'Everyday Basics')
+        choice_index = 3 # This is 'Everyday Basics'
         if 0 <= choice_index < len(categories):
             selected_cat = categories[choice_index]
             print(f"\nUser selected: {selected_cat}")
@@ -104,8 +110,10 @@ if __name__ == "__main__":
                 print(f"Error: {food_data}")
         else:
             print(f"\nERROR: {choice_index} is not a valid choice.")
+            print(f"Please enter a number between 0 and {len(categories) - 1}.")
 
-    elif mode == "2": # Manual entry
+    elif mode == "2": #Manual entry
+    
         user_time = input("Enter time in seconds: ")
         user_power = input("Enter power level (1-10): ")
         print(f"\n--- FINAL COOKING COMMAND SENT TO MICROWAVE ---")
